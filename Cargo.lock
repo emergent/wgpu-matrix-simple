@@ -1336,7 +1336,6 @@ dependencies = [
  "futures-channel",
  "log",
  "tokio",
- "wasm-bindgen",
  "wasm-bindgen-futures",
  "wgpu",
 ]

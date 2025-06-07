@@ -44,10 +44,7 @@ fn main() {
 async fn run() -> anyhow::Result<()> {
     // WGPU インスタンスの作成
     let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        #[cfg(not(target_arch = "wasm32"))]
         backends: wgpu::Backends::PRIMARY,
-        #[cfg(target_arch = "wasm32")]
-        backends: wgpu::Backends::BROWSER_WEBGPU, // PRIMARYでも良い
         ..Default::default()
     });
 
