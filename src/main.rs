@@ -1,8 +1,9 @@
+use std::borrow::Cow;
+use wgpu::util::DeviceExt;
+
 // 行列のサイズを定義
 const MATRIX_SIZE: usize = 16;
 const WORKGROUP_SIZE: u32 = 16; // コンピュートシェーダーのワークグループサイズ
-use std::borrow::Cow;
-use wgpu::util::DeviceExt;
 
 // GPU用の行列データ構造
 #[repr(C)]
@@ -13,8 +14,34 @@ struct MatrixDimensions {
     _padding: [u32; 2], // パディングでアライメント調整
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Info)
+        .format(|buf, record| {
+            use std::io::Write;
+            writeln!(buf, "{}", record.args())
+        })
+        .init();
+
+    run().await
+}
+
+#[cfg(target_arch = "wasm32")]
+fn main() {
+    std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+    console_log::init_with_level(log::Level::Info)
+        .expect("Couldn't initialize logger");
+
+    wasm_bindgen_futures::spawn_local(async {
+        if let Err(e) = run().await {
+            log::error!("エラー: {}", e);
+        }
+    });
+}
+
+async fn run() -> anyhow::Result<()> {
     // WGPU インスタンスの作成
     let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
         #[cfg(not(target_arch = "wasm32"))]
@@ -190,14 +217,29 @@ async fn main() -> anyhow::Result<()> {
     // 結果の読み取り
     let buffer_slice = staging_buffer.slice(..);
 
-    // PC環境でのバッファー読み取り
-    let (sender, receiver) = tokio::sync::oneshot::channel();
-    buffer_slice.map_async(wgpu::MapMode::Read, move |v| {
-        sender.send(v).ok();
-    });
+    #[cfg(target_arch = "wasm32")]
+    {
+        // Wasm環境でのバッファー読み取り
+        let (sender, receiver) = futures_channel::oneshot::channel();
+        buffer_slice.map_async(wgpu::MapMode::Read, move |v| {
+            sender.send(v).ok();
+        });
 
-    device.poll(wgpu::PollType::Wait)?;
-    receiver.await.unwrap().unwrap();
+        device.poll(wgpu::PollType::Wait)?;
+        receiver.await.unwrap().unwrap();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        // PC環境でのバッファー読み取り
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        buffer_slice.map_async(wgpu::MapMode::Read, move |v| {
+            sender.send(v).ok();
+        });
+
+        device.poll(wgpu::PollType::Wait)?;
+        receiver.await.unwrap().unwrap();
+    }
 
     let data = buffer_slice.get_mapped_range();
     let result: Vec<f32> = bytemuck::cast_slice(&data).to_vec();
@@ -205,26 +247,33 @@ async fn main() -> anyhow::Result<()> {
     staging_buffer.unmap();
 
     // 結果の表示
-    println!("Matrix A:");
+    let mut s = String::new();
+
+    log::info!("Matrix A:");
     for i in 0..size {
         for j in 0..size {
-            print!("{:8.4} ", matrix_a[i * size + j]);
+            s.push_str(&format!("{:8.4} ", matrix_a[i * size + j]));
         }
-        println!();
+        log::info!("{s}");
+        s.clear();
     }
-    println!("\nMatrix B:");
+
+    log::info!("\nMatrix B:");
     for i in 0..size {
         for j in 0..size {
-            print!("{:8.4} ", matrix_b[i * size + j]);
+            s.push_str(&format!("{:8.4} ", matrix_b[i * size + j]));
         }
-        println!();
+        log::info!("{s}");
+        s.clear();
     }
-    println!("\nResult Matrix:");
+
+    log::info!("\nResult Matrix:");
     for i in 0..size {
         for j in 0..size {
-            print!("{:8.4} ", result[i * size + j]);
+            s.push_str(&format!("{:8.4} ", result[i * size + j]));
         }
-        println!();
+        log::info!("{s}");
+        s.clear();
     }
 
     Ok(())
