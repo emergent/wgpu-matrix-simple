@@ -22,17 +22,12 @@ WebAssemblyとしてビルドし、Webサーバーでホストしてブラウザ
 ```bash
 # Wasmビルドツール
 rustup target add wasm32-unknown-unknown
-cargo install wasm-bindgen-cli
+cargo install trunk
 
 # ビルド
-cargo build --target wasm32-unknown-unknown
-
-# Wasmに変換
-wasm-bindgen --out-dir ./out --target web ./target/wasm32-unknown-unknown/debug/wgpu-matrix-simple.wasm
-
-# Webサーバーでホスト (例: Python)
-python3 -m http.server --directory ./out
+trunk serve --release
 ```
+
 その後、ブラウザで `http://localhost:8000` にアクセスします。
 
 ## Raspberry Pi 4 での動作について
